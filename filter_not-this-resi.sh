@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# filter_alignment.sh
+# filter_not-this-resi.sh
 #
 # Given an aligned FASTA file, an alignment position (1-based),
 # and an amino acid character, output a FASTA containing only
 # sequences that DO NOT have that amino acid at that position.
 #
 # Usage:
-#   ./filter_alignment.sh aligned.fasta 145 H > filtered.fasta
+#   ./filter_not-this-resi.sh aligned.fasta 145 H > filtered.fasta
 #
 # Example:
-#   ./filter_alignment.sh msa.fasta 87 D > sequences_not_D_at_87.fasta
+#   ./filter_not-this-resi.sh msa.fasta 87 D > sequences_not_D_at_87.fasta
 
 set -euo pipefail
 
