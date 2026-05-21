@@ -4,7 +4,7 @@
 # Given an aligned FASTA file, an alignment position (1-based),
 # and an amino acid character, output a FASTA containing only
 # sequences that DO NOT have that amino acid at that position.
-# Also writes a txt file listing excluded sequences and what residue they had.
+# Also writes a txt file listing those same sequences and what residue they have.
 #
 # Usage:
 #   ./filter_not-this-resi.sh aligned.fasta 145 H
@@ -53,7 +53,7 @@ awk -v pos="$POSITION" -v aa="$AA" -v report="$REPORT" -v outfasta="$OUTFASTA" '
 BEGIN {
     header = ""
     seq = ""
-    print "Sequences excluded (have " aa " at position " pos "):" > report
+    print "Sequences without " aa " at position " pos " (residue found shown):" > report
     print "----------------------------------------" >> report
 }
 /^>/ {
@@ -62,7 +62,6 @@ BEGIN {
         if (residue != aa) {
             print header > outfasta
             print seq > outfasta
-        } else {
             label = substr(header, 2)
             print label "\t" residue >> report
         }
@@ -81,7 +80,6 @@ END {
         if (residue != aa) {
             print header > outfasta
             print seq > outfasta
-        } else {
             label = substr(header, 2)
             print label "\t" residue >> report
         }
@@ -90,4 +88,4 @@ END {
 ' "$FASTA"
 
 echo "Filtered FASTA written to: $OUTFASTA" >&2
-echo "Excluded sequences report written to: $REPORT" >&2
+echo "Sequences report written to: $REPORT" >&2
