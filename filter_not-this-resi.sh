@@ -4,12 +4,15 @@
 # Given an aligned FASTA file, an alignment position (1-based),
 # and an amino acid character, output a FASTA containing only
 # sequences that DO NOT have that amino acid at that position.
+# Also writes a txt file listing excluded sequences and what residue they had.
 #
 # Usage:
-#   ./filter_not-this-resi.sh aligned.fasta 145 H > filtered.fasta
+#   ./filter_not-this-resi.sh aligned.fasta 145 H
 #
 # Example:
-#   ./filter_not-this-resi.sh msa.fasta 87 D > sequences_not_D_at_87.fasta
+#   ./filter_not-this-resi.sh msa.fasta 87 D
+#   -> msa_pos87_not_D.fasta
+#   -> msa_pos87_not_D.txt
 
 set -euo pipefail
 
@@ -35,47 +38,56 @@ fi
 
 # Convert amino acid to uppercase and ensure it is a single character
 AA=$(echo "$AA" | tr '[:lower:]' '[:upper:]')
-
 if [[ ${#AA} -ne 1 ]]; then
     echo "Error: Amino acid must be a single character." >&2
     exit 1
 fi
 
+# Derive output filenames
+BASENAME=$(basename "$FASTA" | sed 's/\.[^.]*$//')
+OUTFASTA="${BASENAME}_pos${POSITION}_not_${AA}.fasta"
+REPORT="${BASENAME}_pos${POSITION}_not_${AA}.txt"
+
 # Process the FASTA
-awk -v pos="$POSITION" -v aa="$AA" '
+awk -v pos="$POSITION" -v aa="$AA" -v report="$REPORT" -v outfasta="$OUTFASTA" '
 BEGIN {
     header = ""
     seq = ""
+    print "Sequences excluded (have " aa " at position " pos "):" > report
+    print "----------------------------------------" >> report
 }
-
-# When a new header is encountered, process the previous sequence
 /^>/ {
     if (header != "") {
         residue = toupper(substr(seq, pos, 1))
         if (residue != aa) {
-            print header
-            # Print sequence in original single-line format
-            print seq
+            print header > outfasta
+            print seq > outfasta
+        } else {
+            label = substr(header, 2)
+            print label "\t" residue >> report
         }
     }
     header = $0
     seq = ""
     next
 }
-
-# Accumulate sequence lines (handles multiline FASTA)
 {
     gsub(/[[:space:]]/, "", $0)
     seq = seq $0
 }
-
 END {
     if (header != "") {
         residue = toupper(substr(seq, pos, 1))
         if (residue != aa) {
-            print header
-            print seq
+            print header > outfasta
+            print seq > outfasta
+        } else {
+            label = substr(header, 2)
+            print label "\t" residue >> report
         }
     }
 }
 ' "$FASTA"
+
+echo "Filtered FASTA written to: $OUTFASTA" >&2
+echo "Excluded sequences report written to: $REPORT" >&2
