@@ -5,6 +5,8 @@
 # Filters a FASTA file to only include sequences whose IDs are present
 # in the given Newick tree file.
 # Output is written to <treefile_basename>_tree-filtered.fasta
+#
+# Portable: works with BSD (macOS) and GNU grep/awk.
 
 set -euo pipefail
 
@@ -20,7 +22,6 @@ fi
 TREEFILE="$1"
 INPUT_FASTA="$2"
 
-# Derive output name from the treefile: strip directory and any extension, append suffix
 TREE_BASENAME=$(basename "$TREEFILE")
 TREE_STEM="${TREE_BASENAME%.*}"
 OUTPUT_FASTA="${TREE_STEM}_tree-filtered.fasta"
@@ -37,44 +38,43 @@ if [[ ! -f "$INPUT_FASTA" ]]; then
 fi
 
 # --- Extract sequence IDs from the tree ---
-# Newick tip labels are comma/paren/colon/semicolon-delimited tokens.
-# This strips all Newick punctuation and numeric branch lengths,
-# leaving only tip label strings.
-TREE_IDS=$(grep -oP "[A-Za-z0-9_.|\-]+" "$TREEFILE" \
-    | grep -vP "^[0-9]*\.?[0-9]+$")   # drop pure numeric branch lengths
+IDS_FILE=$(mktemp)
+trap 'rm -f "$IDS_FILE"' EXIT
 
-if [[ -z "$TREE_IDS" ]]; then
+# Tokenize on allowed ID characters (hyphen last in the class for POSIX ERE),
+# then drop pure numeric tokens (branch lengths / support values),
+# including scientific notation like 1e-05.
+# "|| true" keeps pipefail from aborting if the filter removes everything.
+grep -oE '[A-Za-z0-9_.|-]+' "$TREEFILE" \
+    | grep -vE '^[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$' \
+    | sort -u > "$IDS_FILE" || true
+
+if [[ ! -s "$IDS_FILE" ]]; then
     echo "Error: No tip labels found in tree file: $TREEFILE" >&2
     exit 1
 fi
 
-TREE_ID_COUNT=$(echo "$TREE_IDS" | wc -l)
-echo "Found $TREE_ID_COUNT tip labels in tree."
+TREE_ID_COUNT=$(wc -l < "$IDS_FILE" | tr -d ' ')
+echo "Found $TREE_ID_COUNT unique tip labels in tree."
 
 # --- Filter the FASTA ---
-# Walk through the FASTA; print a record only if its header ID is in the tree.
-awk -v ids="$TREE_IDS" '
-BEGIN {
-    # Load tree IDs into a lookup set
-    n = split(ids, arr, "\n")
-    for (i = 1; i <= n; i++) {
-        gsub(/^[ \t]+|[ \t]+$/, "", arr[i])   # trim whitespace
-        if (arr[i] != "") tree[arr[i]] = 1
-    }
-    print_seq = 0
+# First file (IDS_FILE) loads the lookup set; second file (FASTA) is filtered.
+awk '
+NR == FNR {
+    gsub(/^[ \t\r]+|[ \t\r]+$/, "")
+    if ($0 != "") tree[$0] = 1
+    next
 }
 /^>/ {
-    # Extract the ID: everything after ">" up to the first space or end-of-line
-    match($0, /^>([^ \t]+)/, m)
-    seqid = m[1]
-    print_seq = (seqid in tree) ? 1 : 0
+    seqid = substr($1, 2)      # first whitespace-delimited field, minus ">"
+    print_seq = (seqid in tree)
     if (print_seq) print
     next
 }
 {
     if (print_seq) print
 }
-' "$INPUT_FASTA" > "$OUTPUT_FASTA"
+' "$IDS_FILE" "$INPUT_FASTA" > "$OUTPUT_FASTA"
 
 # --- Report results ---
 IN_COUNT=$(grep -c "^>" "$INPUT_FASTA" || true)
